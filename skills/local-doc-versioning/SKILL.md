@@ -24,8 +24,11 @@ This skill provides local, Git-like version control for AI-generated feature doc
 Use it when you want to:
 
 - Track versions of Claude-generated docs without committing to Git
+
 - Recall previous documentation states for context replay
+
 - Apply incremental code changes based on doc diffs (add/modify/delete)
+
 - Automatically clean up old versions
 
 **Use it when** docs are short-lived feature specs, experiments, or drafts you do not want in Git history.
@@ -35,12 +38,17 @@ Use it when you want to:
 ## Conventions
 
 **Snapshot ID format**: `YYYYMMDD-HHMMSS-<hash>`
+
 - Timestamp portion uses the current UTC time
+
 - Hash is the first 6 hex characters of the SHA-256 digest of the concatenated file content hashes (sorted by relative path for determinism). This means identical file content at different times produces the same hash suffix.
+
 - Example: `20260205-170300-a3f2c1`
 
 **Feature key format**: Lowercase alphanumeric characters and hyphens only, 1–50 characters.
+
 - Valid: `user-auth`, `payment-flow-v2`, `api-redesign`
+
 - Invalid: `User Auth`, `payment_flow`, `a-very-long-feature-key-that-exceeds-fifty-characters-limit`
 
 **Timestamp format**: ISO 8601 UTC, e.g. `2026-02-05T17:03:00Z`
@@ -51,23 +59,33 @@ On first invocation of any command, check whether `.agentdocs/` exists. If it do
 
 1. Read the template config from the skill's `template/config.json`
 2. Create the directory structure:
+
    ```
+
    .agentdocs/
    .agentdocs/snapshots/
    .agentdocs/applied/
+
    ```
+
 3. Copy the template config to `.agentdocs/config.json`
 4. Check if `.gitignore` exists in the project root:
+
    - If yes: read it. If `.agentdocs/` is not listed, append a newline and `.agentdocs/` to it.
+
    - If no: create `.gitignore` containing `.agentdocs/`
+
 5. Confirm `source_root` (default `.claude/feature-docs`) exists. If not, create it.
 6. Report to the user:
+
    ```
+
    Initialized local-doc-versioning:
      Store: .agentdocs/
      Source: .claude/feature-docs/
      Config: .agentdocs/config.json
      .gitignore updated
+
    ```
 
 ## Commands
@@ -83,30 +101,46 @@ On first invocation of any command, check whether `.agentdocs/` exists. If it do
 3. Use Glob to list all files under `source_root` (recursively, excluding hidden files)
 4. If no files found, report error: "No files found under `<source_root>`. Nothing to snapshot." and stop.
 5. For each file:
+
    - Read the file content
+
    - Compute SHA-256 hash of the content
+
    - Record path (relative to `source_root`), hash, byte size, and last modified time
+
 6. Generate the manifest JSON (see Data Schemas below) with all fields except `snapshot_id`:
+
    - Set `feature_key` from the positional argument (or null if not provided)
+
    - Set `summary` from the `--message` flag value (or null if not provided)
+
    - Set `created_at` to current UTC time
+
    - Set `source_root` from config
+
 7. Compute `snapshot_id`: take current UTC timestamp formatted as `YYYYMMDD-HHMMSS`, append `-`, append first 6 hex chars of SHA-256 of the concatenated file hashes (sorted by path)
 8. Create directory `.agentdocs/snapshots/<snapshot_id>/files/`
 9. Copy each source file into `.agentdocs/snapshots/<snapshot_id>/files/` preserving relative paths
 10. Write the complete manifest (now including `snapshot_id`) to `.agentdocs/snapshots/<snapshot_id>/manifest.json`
 11. Report:
+
     ```
+
     Snapshot saved: <snapshot_id>
       Feature: <feature_key or "(none)">
       Files: <count> (<file list>)
       Size: <total size>
+
     ```
 
 **Error conditions**:
+
 - `source_root` does not exist → report error, suggest running setup
+
 - No files in `source_root` → report error as above
+
 - Invalid `feature_key` → report format requirements
+
 - `.agentdocs/` not writable → report permission error
 
 ---
@@ -124,14 +158,19 @@ On first invocation of any command, check whether `.agentdocs/` exists. If it do
 5. Sort by `created_at` descending (newest first)
 6. If `--limit N` specified, show only the first N entries
 7. Display as a table:
+
    ```
+
    Recent snapshots:
      [pin] <snapshot_id>  [<feature_key>]  <N> files  <size>
      ...
+
    ```
+
    Use `(pinned)` marker for pinned snapshots.
 
 **Error conditions**:
+
 - No snapshots exist → report: "No snapshots found. Use `save` to create one."
 
 ---
@@ -145,23 +184,33 @@ On first invocation of any command, check whether `.agentdocs/` exists. If it do
 1. Validate that `.agentdocs/snapshots/<snapshot_id>/manifest.json` exists. If not, report error: "Snapshot `<snapshot_id>` not found." and stop.
 2. Read the manifest
 3. Display snapshot summary:
+
    ```
+
    Snapshot: <snapshot_id>
    Feature: <feature_key>
    Created: <created_at>
    Message: <summary>
 
    Files:
+
      - <path> (<size>)
+
      ...
+
    ```
+
 4. For each file in the snapshot, read it from `.agentdocs/snapshots/<snapshot_id>/files/<path>` and present the content to the user
 5. Ask the user how they want to proceed:
+
    - **View only**: just display the content (default)
+
    - **Restore**: copy snapshot files back to `source_root`, overwriting current versions
 
 **Error conditions**:
+
 - Snapshot ID not found → report error with suggestion to run `list`
+
 - Snapshot files missing/corrupted → report which files are missing
 
 ---
@@ -175,15 +224,25 @@ On first invocation of any command, check whether `.agentdocs/` exists. If it do
 1. Validate both snapshot IDs exist. If either is missing, report error and stop.
 2. Read both manifests
 3. Compare file lists:
+
    - **Added**: files in `to` but not in `from` (by relative path)
+
    - **Deleted**: files in `from` but not in `to`
+
    - **Modified**: files in both where SHA-256 hashes differ
+
    - **Unchanged**: files in both where hashes match
+
 4. For each modified file:
+
    - Read both versions from their snapshot directories
+
    - Generate a unified diff (use Bash `diff -u` or produce the diff inline)
+
 5. Display:
+
    ```
+
    Diff: <from_id> → <to_id>
 
    Files changed:
@@ -192,11 +251,15 @@ On first invocation of any command, check whether `.agentdocs/` exists. If it do
      M <path>            (+<added> lines, -<removed> lines)
 
    Summary:
+
      - <natural language description of changes>
+
    ```
 
 **Error conditions**:
+
 - Either snapshot not found → report which one is missing
+
 - Same snapshot ID for both → report: "Cannot diff a snapshot with itself."
 
 ---
@@ -211,11 +274,16 @@ On first invocation of any command, check whether `.agentdocs/` exists. If it do
 
 1. Run the `diff` flow internally to get the list of changes
 2. For each changed document, analyze the content:
+
    - Identify sections by stable IDs (matching `doc_format.id_pattern` from config)
+
    - Categorize changes per section: new section, modified section, deleted section
+
 3. Check `.agentdocs/applied/` for any previous operation logs related to these snapshots
 4. Produce a structured change plan:
+
    ```
+
    Change plan: <from_id> → <to_id>
 
    New operations:
@@ -225,23 +293,31 @@ On first invocation of any command, check whether `.agentdocs/` exists. If it do
      ~ <ID>: <description of what code to update>
 
    Removed operations:
+
      - <ID>: <description of what code to remove/revert>
+
    ```
+
 5. Ask the user: **Preview patches**, **Apply**, or **Cancel**
 
 **Example**: Given a doc that changed between two snapshots:
 
 Before (snapshot A):
+
 ```markdown
+
 ## REQ-001: User Login
 Users log in with email and password.
 
 ## REQ-002: Session Management
 Sessions expire after 24 hours.
+
 ```
 
 After (snapshot B):
+
 ```markdown
+
 ## REQ-001: User Login
 Users log in with email and password. Add OAuth support.
 
@@ -250,10 +326,13 @@ Sessions expire after 1 hour (changed from 24).
 
 ## REQ-003: Audit Logging
 Log all authentication events.
+
 ```
 
 Expected plan output:
+
 ```
+
 Change plan: <A> → <B>
 
 Modified operations:
@@ -262,10 +341,13 @@ Modified operations:
 
 New operations:
   + REQ-003: Implement audit logging for auth events
+
 ```
 
 **Error conditions**:
+
 - Same as `diff` errors
+
 - No stable IDs found in docs and `require_stable_ids` is true → warn: "No stable IDs found. Enable `require_stable_ids: false` in config or add IDs like `REQ-001` to doc headings."
 
 ---
@@ -280,32 +362,49 @@ New operations:
 
 1. Run the `plan` flow internally to get the change plan
 2. For each operation in the plan:
+
    - **New**: generate the new code based on the doc requirements, write to target files
+
    - **Modified**: read the existing target file, apply minimal edits based on the doc changes
+
    - **Removed**: identify the code sections tied to deleted requirements, remove them
+
 3. If `--dry-run`: display what would change without writing any files. Show the planned edits for each target file.
 4. If not dry-run:
+
    - Apply edits to target files using the Edit tool
+
    - If an edit conflicts (target code has changed in unexpected ways), mark the conflict:
+
      ```
+
      <<<<<<< CURRENT
      ... existing code ...
      =======
      ... proposed change ...
      >>>>>>> PROPOSED (<requirement ID>)
+
      ```
+
    - Record all operations to `.agentdocs/applied/<to_id>.json` (see Data Schemas)
+
 5. Report:
+
    ```
+
    Applied changes: <from_id> → <to_id>
      <N> files modified
      <N> operations applied
      <N> conflicts (require manual review)
+
    ```
 
 **Error conditions**:
+
 - Target files do not exist (for modify/remove) → report: "Target file `<path>` not found. Skipping operation `<id>`."
+
 - Conflicts detected → mark conflict regions, do not silently overwrite
+
 - All operations failed → report summary of failures
 
 **Important**: Never silently overwrite code. Always prefer minimal, surgical edits. When in doubt, mark conflicts and ask the user.
@@ -321,12 +420,18 @@ New operations:
 1. Load config. Use provided flags or fall back to `retention.keep_last` and `retention.keep_days` from config.
 2. List all snapshots (same as `list` flow)
 3. Determine which snapshots to keep (union of all rules):
+
    - The most recent N snapshots (by `created_at`)
+
    - Any snapshot created within the last D days
+
    - Any snapshot whose ID is in `config.retention.pins`
+
 4. Mark all other snapshots for deletion
 5. If `--dry-run`:
+
    ```
+
    GC preview:
      Keep: <N> snapshots (<breakdown>)
      Delete: <N> snapshots (~<total size>)
@@ -334,19 +439,29 @@ New operations:
      Snapshots to delete:
        <snapshot_id>  [<feature_key>]  <created_at>
        ...
+
    ```
+
 6. If not dry-run:
+
    - Delete each marked snapshot directory under `.agentdocs/snapshots/`
+
    - Delete corresponding operation logs under `.agentdocs/applied/` if they exist
+
    - Report:
+
      ```
+
      GC complete:
        Deleted: <N> snapshots (~<total size>)
        Remaining: <N> snapshots
+
      ```
 
 **Error conditions**:
+
 - No snapshots exist → report: "Nothing to clean up."
+
 - All snapshots are protected → report: "All snapshots are retained by current rules. Nothing to delete."
 
 ---
@@ -396,6 +511,7 @@ Configuration lives in `.agentdocs/config.json`. See `template/config.json` for 
 ## Storage Structure
 
 ```
+
 <project>/
   .claude/feature-docs/               # Source docs (configurable)
   .agentdocs/                          # Local-only version store (gitignored)
@@ -408,6 +524,7 @@ Configuration lives in `.agentdocs/config.json`. See `template/config.json` for 
           api-spec.md
     applied/                           # Operation logs from apply command
       <snapshot_id>.json
+
 ```
 
 ## Data Schemas
@@ -415,6 +532,7 @@ Configuration lives in `.agentdocs/config.json`. See `template/config.json` for 
 ### manifest.json
 
 ```json
+
 {
   "snapshot_id": "20260205-170300-a3f2c1",
   "created_at": "2026-02-05T17:03:00Z",
@@ -430,6 +548,7 @@ Configuration lives in `.agentdocs/config.json`. See `template/config.json` for 
     }
   ]
 }
+
 ```
 
 | Field | Type | Required | Description |
@@ -448,6 +567,7 @@ Configuration lives in `.agentdocs/config.json`. See `template/config.json` for 
 ### Operation Log (applied/<snapshot_id>.json)
 
 ```json
+
 {
   "from_snapshot": "20260204-093000-b1e4d2",
   "to_snapshot": "20260205-170300-a3f2c1",
@@ -463,6 +583,7 @@ Configuration lives in `.agentdocs/config.json`. See `template/config.json` for 
     }
   ]
 }
+
 ```
 
 | Field | Type | Required | Description |
@@ -481,16 +602,26 @@ Configuration lives in `.agentdocs/config.json`. See `template/config.json` for 
 ## Guidelines
 
 - **Use stable IDs in docs** for reliable diff tracking:
+
   ```markdown
+
   ## REQ-001: OAuth Implementation
   ## REQ-002: Session Management
+
   ```
+
 - **Save snapshots frequently**: after each major doc update, before significant edits, at session end
+
 - **Pin important versions**: feature completion, demos, release milestones
+
 - **Run GC regularly**: `/local-doc-versioning gc` weekly to control disk usage
+
 - **Always review plans before apply**: run `plan` first, inspect operations, then `apply`
+
 - **All artifacts stay local** in `.agentdocs/` — this skill never writes to Git or suggests commits
+
 - **Prefer minimal patches** over full-file rewrites when applying changes
+
 - **On conflicts, mark and ask** — never silently overwrite code
 
 ## Troubleshooting
@@ -510,8 +641,11 @@ Configuration lives in `.agentdocs/config.json`. See `template/config.json` for 
 ### Storage growing too large
 
 Run garbage collection:
+
 ```
+
 /local-doc-versioning gc --keep-last 5 --keep-days 3
+
 ```
 
 ### Snapshot not found
