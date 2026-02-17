@@ -1,6 +1,5 @@
 {
   "source_root": ".claude/feature-docs",
-  "store_root": ".agentdocs",
   "retention": {
     "keep_last": 10,
     "keep_days": 7,
