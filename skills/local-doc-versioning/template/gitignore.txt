@@ -1,0 +1,2 @@
+# Local doc versioning storage (managed by local-doc-versioning skill)
+.agentdocs/
