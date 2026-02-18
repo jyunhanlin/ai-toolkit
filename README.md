@@ -12,7 +12,7 @@ A collection of AI-powered development tools — skills, plugins, and utilities 
 
 | Skill | Description | Status |
 |-------|-------------|--------|
-| [local-doc-versioning](skills/local-doc-versioning/) | Git-like versioning for AI-generated feature docs | v0.1.0 |
+| [local-doc-versioning](skills/local-doc-versioning/) | Git-like versioning for AI-generated feature docs — use only when Git isn't suitable for the files (e.g., ephemeral specs, temporary drafts) | v0.1.0 |
 
 ## Installation
 
